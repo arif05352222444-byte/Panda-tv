@@ -1,0 +1,73 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Projeyi hazırla
+        id: project
+        shell: bash
+        run: |
+          if [ -f PandaTV-GitHub.zip ]; then
+            unzip -q -o PandaTV-GitHub.zip
+            project_dir=KolayCanliYayin
+          elif [ -f settings.gradle.kts ]; then
+            project_dir=.
+          elif [ -f KolayCanliYayin/settings.gradle.kts ]; then
+            project_dir=KolayCanliYayin
+          else
+            echo "::error::PandaTV-GitHub.zip veya Android proje dosyaları bulunamadı."
+            exit 1
+          fi
+
+          test -f "$project_dir/settings.gradle.kts"
+          test -f "$project_dir/app/build.gradle.kts"
+          echo "dir=$project_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Java kurulumu
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kurulumu
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle kurulumu
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: APK derle ve denetle
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+
+      - name: APK dosyasını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: PandaTV-APK
+          path: ${{ steps.project.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Denetim raporlarını yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-raporlari
+          path: ${{ steps.project.outputs.dir }}/app/build/reports/
+          if-no-files-found: ignore
